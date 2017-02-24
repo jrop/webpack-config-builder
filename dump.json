@@ -1,0 +1,1218 @@
+[
+  {
+    "__docId__": 0,
+    "kind": "file",
+    "name": "src/index.js",
+    "content": "import arrify from 'arrify'\nimport common from 'common-prefix'\nimport merge from 'webpack-merge'\nimport path from 'path'\nimport {sync as globby} from 'globby'\nimport webpack from 'webpack'\n\n// http://stackoverflow.com/questions/3115150\nfunction _reEscape(text) {\n\treturn text.replace(/[-[\\]{}()*+?.,\\\\^$|#\\s]/g, '\\\\$&')\n}\n\n// remove the file extension from the file path:\nfunction _noext(f) {\n\tconst ext = path.extname(f)\n\treturn f.slice(0, -ext.length)\n}\n\n/**\n * The configuration builder class\n * @public\n */\nclass ConfigurationBuilder {\n\t/**\n\t * Define aliases\n\t * @see https://webpack.js.org/configuration/resolve/#resolve-alias\n\t * @param {object} aliases The alias specifications\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .alias({\n\t *     'react': 'inferno-compat',\n\t *     'react-dom': 'inferno-compat',\n\t *   })\n\t *   .build()\n\t */\n\talias(aliases) {\n\t\treturn this.merge({\n\t\t\tresolve: {\n\t\t\t\talias: aliases,\n\t\t\t},\n\t\t})\n\t}\n\n\t/**\n\t * Returns a plain JavaScript object representing the built Webpack configuration\n\t * @return {object}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .build()\n\t */\n\tbuild() {\n\t\treturn Object.assign({}, ...Object.getOwnPropertyNames(this).map(prop => ({[prop]: this[prop]})))\n\t}\n\n\t/**\n\t * Set the output directory\n\t * @param {string} dir The output directory; this path may be relative or absolute\n\t * @param {boolean} chunkhash=true Whether to include [chunkhash] in the filename\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .dest('build/public/js', false)\n\t *   .build()\n\t */\n\tdest(dir, chunkhash = true) {\n\t\tlet ManifestPlugin = false\n\t\ttry {\n\t\t\tManifestPlugin = require('webpack-manifest-plugin')\n\t\t} catch (e) {} // eslint-disable-line no-empty\n\t\tchunkhash = chunkhash && Boolean(ManifestPlugin)\n\t\tif (chunkhash && ManifestPlugin)\n\t\t\treturn this.plugins(new ManifestPlugin())\n\t\treturn this.merge({\n\t\t\toutput: {\n\t\t\t\tpath: path.resolve(dir),\n\t\t\t\tfilename: `${chunkhash ? '[chunkhash].' : ''}[name].js`,\n\t\t\t},\n\t\t})\n\t}\n\n\t/**\n\t * Specify whether or not to generate development configuration\n\t * @param {boolean} enable Whether or not to enable development mode\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .development((process.env.NODE_ENV || 'development') == 'development')\n\t *   .build()\n\t */\n\tdevelopment(enable) {\n\t\tif (!enable) return this\n\t\treturn this.merge({\n\t\t\tdevtool: 'source-map',\n\t\t\toutput: {\n\t\t\t\tpathinfo: true,\n\t\t\t},\n\t\t})\n\t}\n\n\t/**\n\t * Add resolvable extensions (ex: '.jsx', '.css')\n\t * @see https://webpack.js.org/configuration/resolve/#resolve-extensions\n\t * @param {...string} ext The extensions to add\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .extensions('.js', '.jsx', '.ts', '.css', '.less', '.scss')\n\t *   .build()\n\t */\n\textensions(...ext) {\n\t\treturn this.merge({\n\t\t\tresolve: {extensions: ext},\n\t\t})\n\t}\n\n\t/**\n\t * Add a loader\n\t * @see https://webpack.js.org/configuration/module/#module-rules\n\t * @param {string|Array<string>} ext The file extensions to match\n\t * @param {string|Array<string>} loader The loader spec\n\t * @param {?object} query The loader parameters\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .loader(['.js', '.jsx'], 'babel-loader', {\n\t *     presets: ['latest', 'react'],\n\t *   })\n\t *   .build()\n\t */\n\tloader(ext, loader, query) {\n\t\treturn this.merge({\n\t\t\tmodule: {\n\t\t\t\trules: [Object.assign({\n\t\t\t\t\ttest: new RegExp(`(${arrify(ext).map(type => _reEscape(type)).join('|')})$`),\n\t\t\t\t\tloader,\n\t\t\t\t}, query ? {query} : null)],\n\t\t\t},\n\t\t})\n\t}\n\n\t/**\n\t * Merge configuration using `webpack-merge`\n\t * @see https://github.com/survivejs/webpack-merge\n\t * @param {...object} cfgs The configurations to merge\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .merge({\n\t *     resolve: {\n\t *       modules: ['node_modules'],\n\t *     },\n\t *   })\n\t *   .build()\n\t */\n\tmerge(...cfgs) {\n\t\tconst simplified = this.build()\n\t\treturn Object.assign(this, merge(simplified, ...cfgs))\n\t}\n\n\t/**\n\t * Add plugins\n\t * @param {...object} plugins The plugins to add\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .plugins(new Plugin1(), new Plugin2())\n\t *   .build()\n\t */\n\tplugins(...plugins) {\n\t\treturn this.merge({plugins})\n\t}\n\n\t/**\n\t * Specify whether or not to generate production configuration\n\t * @param {boolean} enable Whether or not to enable production mode\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .production(process.env.NODE_ENV == 'production')\n\t *   .build()\n\t */\n\tproduction(enable) {\n\t\tif (!enable) return this\n\t\treturn this.plugins(new webpack.optimize.UglifyJsPlugin({\n\t\t\tcomments: false,\n\t\t\tcompress: {warnings: false},\n\t\t\tminimize: true,\n\t\t}), new webpack.DefinePlugin({\n\t\t\t'process.env.NODE_ENV': JSON.stringify('production'),\n\t\t}))\n\t}\n\n\t/**\n\t * Set entry/entries based on glob(s)\n\t * @param {...string} globs The file globs\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .src('src/*.js')\n\t *   .build()\n\t */\n\tsrc(...globs) {\n\t\tconst files = globby(globs, {absolute: true, cwd: process.cwd()})\n\t\tconst base = files.length == 1 ? path.dirname(files[0]) : common(files)\n\t\treturn this.merge({\n\t\t\tentry: Object.assign({}, ...files.map(file => ({[_noext(path.relative(base, file))]: file}))),\n\t\t})\n\t}\n\n\t/**\n\t * Specify vendor modules\n\t * @param {...string} modules The vendor modules\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .vendor('react', 'react-dom', ...)\n\t *   .build()\n\t */\n\tvendor(...modules) {\n\t\treturn this.plugins(new webpack.optimize.CommonsChunkPlugin({names: ['vendor', 'manifest']}))\n\t\t\t.merge({\n\t\t\t\tentry: {\n\t\t\t\t\tvendor: modules,\n\t\t\t\t},\n\t\t\t})\n\t}\n}\n\n/**\n * Creates a configuration builder and returns it\n * @return {ConfigurationBuilder}\n */\nexport default function builder() {\n\treturn new ConfigurationBuilder()\n}\n",
+    "static": true,
+    "longname": "src/index.js",
+    "access": null,
+    "description": null,
+    "lineNumber": 1
+  },
+  {
+    "__docId__": 1,
+    "kind": "function",
+    "name": "_reEscape",
+    "memberof": "src/index.js",
+    "generator": false,
+    "async": false,
+    "static": true,
+    "longname": "src/index.js~_reEscape",
+    "access": null,
+    "export": false,
+    "importPath": "webpack-configify/src/index.js",
+    "importStyle": null,
+    "description": null,
+    "lineNumber": 9,
+    "undocument": true,
+    "unknown": [
+      {
+        "tagName": "@_undocument",
+        "tagValue": ""
+      }
+    ],
+    "params": [
+      {
+        "name": "text",
+        "types": [
+          "*"
+        ]
+      }
+    ],
+    "return": {
+      "types": [
+        "*"
+      ]
+    }
+  },
+  {
+    "__docId__": 2,
+    "kind": "function",
+    "name": "_noext",
+    "memberof": "src/index.js",
+    "generator": false,
+    "async": false,
+    "static": true,
+    "longname": "src/index.js~_noext",
+    "access": null,
+    "export": false,
+    "importPath": "webpack-configify/src/index.js",
+    "importStyle": null,
+    "description": null,
+    "lineNumber": 14,
+    "undocument": true,
+    "unknown": [
+      {
+        "tagName": "@_undocument",
+        "tagValue": ""
+      }
+    ],
+    "params": [
+      {
+        "name": "f",
+        "types": [
+          "*"
+        ]
+      }
+    ],
+    "return": {
+      "types": [
+        "*"
+      ]
+    }
+  },
+  {
+    "__docId__": 3,
+    "kind": "class",
+    "name": "ConfigurationBuilder",
+    "memberof": "src/index.js",
+    "static": true,
+    "longname": "src/index.js~ConfigurationBuilder",
+    "access": "public",
+    "export": false,
+    "importPath": "webpack-configify/src/index.js",
+    "importStyle": null,
+    "description": "The configuration builder class",
+    "lineNumber": 23,
+    "interface": false
+  },
+  {
+    "__docId__": 4,
+    "kind": "method",
+    "name": "alias",
+    "memberof": "src/index.js~ConfigurationBuilder",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/index.js~ConfigurationBuilder#alias",
+    "access": null,
+    "description": "Define aliases",
+    "examples": [
+      "// webpack.config.js\nmodule.exports = builder()\n  .alias({\n    'react': 'inferno-compat',\n    'react-dom': 'inferno-compat',\n  })\n  .build()"
+    ],
+    "see": [
+      "https://webpack.js.org/configuration/resolve/#resolve-alias"
+    ],
+    "lineNumber": 38,
+    "params": [
+      {
+        "nullable": null,
+        "types": [
+          "object"
+        ],
+        "spread": false,
+        "optional": false,
+        "name": "aliases",
+        "description": "The alias specifications"
+      }
+    ],
+    "return": {
+      "nullable": null,
+      "types": [
+        "ConfigurationBuilder"
+      ],
+      "spread": false,
+      "description": ""
+    }
+  },
+  {
+    "__docId__": 5,
+    "kind": "method",
+    "name": "build",
+    "memberof": "src/index.js~ConfigurationBuilder",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/index.js~ConfigurationBuilder#build",
+    "access": null,
+    "description": "Returns a plain JavaScript object representing the built Webpack configuration",
+    "examples": [
+      "// webpack.config.js\nmodule.exports = builder()\n  .build()"
+    ],
+    "lineNumber": 54,
+    "params": [],
+    "return": {
+      "nullable": null,
+      "types": [
+        "object"
+      ],
+      "spread": false,
+      "description": ""
+    }
+  },
+  {
+    "__docId__": 6,
+    "kind": "method",
+    "name": "dest",
+    "memberof": "src/index.js~ConfigurationBuilder",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/index.js~ConfigurationBuilder#dest",
+    "access": null,
+    "description": "Set the output directory",
+    "examples": [
+      "// webpack.config.js\nmodule.exports = builder()\n  .dest('build/public/js', false)\n  .build()"
+    ],
+    "lineNumber": 69,
+    "params": [
+      {
+        "nullable": null,
+        "types": [
+          "string"
+        ],
+        "spread": false,
+        "optional": false,
+        "name": "dir",
+        "description": "The output directory; this path may be relative or absolute"
+      },
+      {
+        "nullable": null,
+        "types": [
+          "boolean"
+        ],
+        "spread": false,
+        "optional": false,
+        "defaultValue": "true",
+        "defaultRaw": true,
+        "name": "chunkhash",
+        "description": "Whether to include [chunkhash] in the filename"
+      }
+    ],
+    "return": {
+      "nullable": null,
+      "types": [
+        "ConfigurationBuilder"
+      ],
+      "spread": false,
+      "description": ""
+    }
+  },
+  {
+    "__docId__": 7,
+    "kind": "method",
+    "name": "development",
+    "memberof": "src/index.js~ConfigurationBuilder",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/index.js~ConfigurationBuilder#development",
+    "access": null,
+    "description": "Specify whether or not to generate development configuration",
+    "examples": [
+      "// webpack.config.js\nmodule.exports = builder()\n  .development((process.env.NODE_ENV || 'development') == 'development')\n  .build()"
+    ],
+    "lineNumber": 95,
+    "params": [
+      {
+        "nullable": null,
+        "types": [
+          "boolean"
+        ],
+        "spread": false,
+        "optional": false,
+        "name": "enable",
+        "description": "Whether or not to enable development mode"
+      }
+    ],
+    "return": {
+      "nullable": null,
+      "types": [
+        "ConfigurationBuilder"
+      ],
+      "spread": false,
+      "description": ""
+    }
+  },
+  {
+    "__docId__": 8,
+    "kind": "method",
+    "name": "extensions",
+    "memberof": "src/index.js~ConfigurationBuilder",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/index.js~ConfigurationBuilder#extensions",
+    "access": null,
+    "description": "Add resolvable extensions (ex: '.jsx', '.css')",
+    "examples": [
+      "// webpack.config.js\nmodule.exports = builder()\n  .extensions('.js', '.jsx', '.ts', '.css', '.less', '.scss')\n  .build()"
+    ],
+    "see": [
+      "https://webpack.js.org/configuration/resolve/#resolve-extensions"
+    ],
+    "lineNumber": 116,
+    "params": [
+      {
+        "nullable": null,
+        "types": [
+          "...string"
+        ],
+        "spread": true,
+        "optional": false,
+        "name": "ext",
+        "description": "The extensions to add"
+      }
+    ],
+    "return": {
+      "nullable": null,
+      "types": [
+        "ConfigurationBuilder"
+      ],
+      "spread": false,
+      "description": ""
+    }
+  },
+  {
+    "__docId__": 9,
+    "kind": "method",
+    "name": "loader",
+    "memberof": "src/index.js~ConfigurationBuilder",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/index.js~ConfigurationBuilder#loader",
+    "access": null,
+    "description": "Add a loader",
+    "examples": [
+      "// webpack.config.js\nmodule.exports = builder()\n  .loader(['.js', '.jsx'], 'babel-loader', {\n    presets: ['latest', 'react'],\n  })\n  .build()"
+    ],
+    "see": [
+      "https://webpack.js.org/configuration/module/#module-rules"
+    ],
+    "lineNumber": 137,
+    "params": [
+      {
+        "nullable": null,
+        "types": [
+          "string",
+          "Array<string>"
+        ],
+        "spread": false,
+        "optional": false,
+        "name": "ext",
+        "description": "The file extensions to match"
+      },
+      {
+        "nullable": null,
+        "types": [
+          "string",
+          "Array<string>"
+        ],
+        "spread": false,
+        "optional": false,
+        "name": "loader",
+        "description": "The loader spec"
+      },
+      {
+        "nullable": true,
+        "types": [
+          "object"
+        ],
+        "spread": false,
+        "optional": false,
+        "name": "query",
+        "description": "The loader parameters"
+      }
+    ],
+    "return": {
+      "nullable": null,
+      "types": [
+        "ConfigurationBuilder"
+      ],
+      "spread": false,
+      "description": ""
+    }
+  },
+  {
+    "__docId__": 10,
+    "kind": "method",
+    "name": "merge",
+    "memberof": "src/index.js~ConfigurationBuilder",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/index.js~ConfigurationBuilder#merge",
+    "access": null,
+    "description": "Merge configuration using `webpack-merge`",
+    "examples": [
+      "// webpack.config.js\nmodule.exports = builder()\n  .merge({\n    resolve: {\n      modules: ['node_modules'],\n    },\n  })\n  .build()"
+    ],
+    "see": [
+      "https://github.com/survivejs/webpack-merge"
+    ],
+    "lineNumber": 163,
+    "params": [
+      {
+        "nullable": null,
+        "types": [
+          "...object"
+        ],
+        "spread": true,
+        "optional": false,
+        "name": "cfgs",
+        "description": "The configurations to merge"
+      }
+    ],
+    "return": {
+      "nullable": null,
+      "types": [
+        "ConfigurationBuilder"
+      ],
+      "spread": false,
+      "description": ""
+    }
+  },
+  {
+    "__docId__": 11,
+    "kind": "method",
+    "name": "plugins",
+    "memberof": "src/index.js~ConfigurationBuilder",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/index.js~ConfigurationBuilder#plugins",
+    "access": null,
+    "description": "Add plugins",
+    "examples": [
+      "// webpack.config.js\nmodule.exports = builder()\n  .plugins(new Plugin1(), new Plugin2())\n  .build()"
+    ],
+    "lineNumber": 178,
+    "params": [
+      {
+        "nullable": null,
+        "types": [
+          "...object"
+        ],
+        "spread": true,
+        "optional": false,
+        "name": "plugins",
+        "description": "The plugins to add"
+      }
+    ],
+    "return": {
+      "nullable": null,
+      "types": [
+        "ConfigurationBuilder"
+      ],
+      "spread": false,
+      "description": ""
+    }
+  },
+  {
+    "__docId__": 12,
+    "kind": "method",
+    "name": "production",
+    "memberof": "src/index.js~ConfigurationBuilder",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/index.js~ConfigurationBuilder#production",
+    "access": null,
+    "description": "Specify whether or not to generate production configuration",
+    "examples": [
+      "// webpack.config.js\nmodule.exports = builder()\n  .production(process.env.NODE_ENV == 'production')\n  .build()"
+    ],
+    "lineNumber": 192,
+    "params": [
+      {
+        "nullable": null,
+        "types": [
+          "boolean"
+        ],
+        "spread": false,
+        "optional": false,
+        "name": "enable",
+        "description": "Whether or not to enable production mode"
+      }
+    ],
+    "return": {
+      "nullable": null,
+      "types": [
+        "ConfigurationBuilder"
+      ],
+      "spread": false,
+      "description": ""
+    }
+  },
+  {
+    "__docId__": 13,
+    "kind": "method",
+    "name": "src",
+    "memberof": "src/index.js~ConfigurationBuilder",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/index.js~ConfigurationBuilder#src",
+    "access": null,
+    "description": "Set entry/entries based on glob(s)",
+    "examples": [
+      "// webpack.config.js\nmodule.exports = builder()\n  .src('src/*.js')\n  .build()"
+    ],
+    "lineNumber": 213,
+    "params": [
+      {
+        "nullable": null,
+        "types": [
+          "...string"
+        ],
+        "spread": true,
+        "optional": false,
+        "name": "globs",
+        "description": "The file globs"
+      }
+    ],
+    "return": {
+      "nullable": null,
+      "types": [
+        "ConfigurationBuilder"
+      ],
+      "spread": false,
+      "description": ""
+    }
+  },
+  {
+    "__docId__": 14,
+    "kind": "method",
+    "name": "vendor",
+    "memberof": "src/index.js~ConfigurationBuilder",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/index.js~ConfigurationBuilder#vendor",
+    "access": null,
+    "description": "Specify vendor modules",
+    "examples": [
+      "// webpack.config.js\nmodule.exports = builder()\n  .vendor('react', 'react-dom', ...)\n  .build()"
+    ],
+    "lineNumber": 231,
+    "params": [
+      {
+        "nullable": null,
+        "types": [
+          "...string"
+        ],
+        "spread": true,
+        "optional": false,
+        "name": "modules",
+        "description": "The vendor modules"
+      }
+    ],
+    "return": {
+      "nullable": null,
+      "types": [
+        "ConfigurationBuilder"
+      ],
+      "spread": false,
+      "description": ""
+    }
+  },
+  {
+    "__docId__": 15,
+    "kind": "function",
+    "name": "builder",
+    "memberof": "src/index.js",
+    "generator": false,
+    "async": false,
+    "static": true,
+    "longname": "src/index.js~builder",
+    "access": null,
+    "export": true,
+    "importPath": "webpack-configify/src/index.js",
+    "importStyle": "builder",
+    "description": "Creates a configuration builder and returns it",
+    "lineNumber": 245,
+    "params": [],
+    "return": {
+      "nullable": null,
+      "types": [
+        "ConfigurationBuilder"
+      ],
+      "spread": false,
+      "description": ""
+    }
+  },
+  {
+    "__docId__": 17,
+    "kind": "external",
+    "name": "Infinity",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Infinity",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Infinity",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 18,
+    "kind": "external",
+    "name": "NaN",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/NaN",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~NaN",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 19,
+    "kind": "external",
+    "name": "undefined",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/undefined",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~undefined",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 20,
+    "kind": "external",
+    "name": "null",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/null",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~null",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 21,
+    "kind": "external",
+    "name": "Object",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Object",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 22,
+    "kind": "external",
+    "name": "object",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~object",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 23,
+    "kind": "external",
+    "name": "Function",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Function",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 24,
+    "kind": "external",
+    "name": "function",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~function",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 25,
+    "kind": "external",
+    "name": "Boolean",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Boolean",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 26,
+    "kind": "external",
+    "name": "boolean",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~boolean",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 27,
+    "kind": "external",
+    "name": "Symbol",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Symbol",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 28,
+    "kind": "external",
+    "name": "Error",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Error",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 29,
+    "kind": "external",
+    "name": "EvalError",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/EvalError",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~EvalError",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 30,
+    "kind": "external",
+    "name": "InternalError",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/InternalError",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~InternalError",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 31,
+    "kind": "external",
+    "name": "RangeError",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RangeError",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~RangeError",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 32,
+    "kind": "external",
+    "name": "ReferenceError",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ReferenceError",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~ReferenceError",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 33,
+    "kind": "external",
+    "name": "SyntaxError",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SyntaxError",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~SyntaxError",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 34,
+    "kind": "external",
+    "name": "TypeError",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypeError",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~TypeError",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 35,
+    "kind": "external",
+    "name": "URIError",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/URIError",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~URIError",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 36,
+    "kind": "external",
+    "name": "Number",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Number",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 37,
+    "kind": "external",
+    "name": "number",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~number",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 38,
+    "kind": "external",
+    "name": "Date",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Date",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 39,
+    "kind": "external",
+    "name": "String",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~String",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 40,
+    "kind": "external",
+    "name": "string",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~string",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 41,
+    "kind": "external",
+    "name": "RegExp",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~RegExp",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 42,
+    "kind": "external",
+    "name": "Array",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Array",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 43,
+    "kind": "external",
+    "name": "Int8Array",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int8Array",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Int8Array",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 44,
+    "kind": "external",
+    "name": "Uint8Array",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Uint8Array",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 45,
+    "kind": "external",
+    "name": "Uint8ClampedArray",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8ClampedArray",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Uint8ClampedArray",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 46,
+    "kind": "external",
+    "name": "Int16Array",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int16Array",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Int16Array",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 47,
+    "kind": "external",
+    "name": "Uint16Array",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint16Array",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Uint16Array",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 48,
+    "kind": "external",
+    "name": "Int32Array",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int32Array",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Int32Array",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 49,
+    "kind": "external",
+    "name": "Uint32Array",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint32Array",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Uint32Array",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 50,
+    "kind": "external",
+    "name": "Float32Array",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Float32Array",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Float32Array",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 51,
+    "kind": "external",
+    "name": "Float64Array",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Float64Array",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Float64Array",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 52,
+    "kind": "external",
+    "name": "Map",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Map",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 53,
+    "kind": "external",
+    "name": "Set",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Set",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 54,
+    "kind": "external",
+    "name": "WeakMap",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~WeakMap",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 55,
+    "kind": "external",
+    "name": "WeakSet",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakSet",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~WeakSet",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 56,
+    "kind": "external",
+    "name": "ArrayBuffer",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~ArrayBuffer",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 57,
+    "kind": "external",
+    "name": "DataView",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~DataView",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 58,
+    "kind": "external",
+    "name": "JSON",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~JSON",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 59,
+    "kind": "external",
+    "name": "Promise",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Promise",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 60,
+    "kind": "external",
+    "name": "Generator",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Generator",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Generator",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 61,
+    "kind": "external",
+    "name": "GeneratorFunction",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/GeneratorFunction",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~GeneratorFunction",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 62,
+    "kind": "external",
+    "name": "Reflect",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Reflect",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Reflect",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 63,
+    "kind": "external",
+    "name": "Proxy",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy",
+    "memberof": "BuiltinExternal/ECMAScriptExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/ECMAScriptExternal.js~Proxy",
+    "access": null,
+    "description": "",
+    "lineNumber": 193,
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 65,
+    "kind": "external",
+    "name": "CanvasRenderingContext2D",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D",
+    "memberof": "BuiltinExternal/WebAPIExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/WebAPIExternal.js~CanvasRenderingContext2D",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 66,
+    "kind": "external",
+    "name": "DocumentFragment",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/DocumentFragment",
+    "memberof": "BuiltinExternal/WebAPIExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/WebAPIExternal.js~DocumentFragment",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 67,
+    "kind": "external",
+    "name": "Element",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/Element",
+    "memberof": "BuiltinExternal/WebAPIExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/WebAPIExternal.js~Element",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 68,
+    "kind": "external",
+    "name": "Event",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/Event",
+    "memberof": "BuiltinExternal/WebAPIExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/WebAPIExternal.js~Event",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 69,
+    "kind": "external",
+    "name": "Node",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/Node",
+    "memberof": "BuiltinExternal/WebAPIExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/WebAPIExternal.js~Node",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 70,
+    "kind": "external",
+    "name": "NodeList",
+    "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/NodeList",
+    "memberof": "BuiltinExternal/WebAPIExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/WebAPIExternal.js~NodeList",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 71,
+    "kind": "external",
+    "name": "XMLHttpRequest",
+    "externalLink": "https://developer.mozilla.org/en/docs/Web/API/XMLHttpRequest",
+    "memberof": "BuiltinExternal/WebAPIExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/WebAPIExternal.js~XMLHttpRequest",
+    "access": null,
+    "description": "",
+    "builtinExternal": true
+  },
+  {
+    "__docId__": 72,
+    "kind": "external",
+    "name": "AudioContext",
+    "externalLink": "https://developer.mozilla.org/en/docs/Web/API/AudioContext",
+    "memberof": "BuiltinExternal/WebAPIExternal.js",
+    "static": true,
+    "longname": "BuiltinExternal/WebAPIExternal.js~AudioContext",
+    "access": null,
+    "description": "",
+    "lineNumber": 34,
+    "builtinExternal": true
+  }
+]

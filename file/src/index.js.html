@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <base data-ice="baseUrl" href="../../">
+  <title data-ice="title">src/index.js | API Document</title>
+  <link type="text/css" rel="stylesheet" href="css/style.css">
+  <link type="text/css" rel="stylesheet" href="css/prettify-tomorrow.css">
+  <script src="script/prettify/prettify.js"></script>
+  
+  
+  <script src="script/manual.js"></script>
+</head>
+<body class="layout-container" data-ice="rootContainer">
+
+<header>
+  <a href="./">Home</a>
+  
+  <a href="identifiers.html">Reference</a>
+  <a href="source.html">Source</a>
+  
+  
+  <div class="search-box">
+  <span>
+    <img src="./image/search.png">
+    <span class="search-input-edge"></span><input class="search-input"><span class="search-input-edge"></span>
+  </span>
+    <ul class="search-result"></ul>
+  </div>
+</header>
+
+<nav class="navigation" data-ice="nav"><div>
+  <ul>
+    
+  <li data-ice="doc"><span data-ice="kind" class="kind-class">C</span><span data-ice="name"><span><a href="class/src/index.js~ConfigurationBuilder.html">ConfigurationBuilder</a></span></span></li>
+<li data-ice="doc"><span data-ice="kind" class="kind-function">F</span><span data-ice="name"><span><a href="function/index.html#static-function-builder">builder</a></span></span></li>
+</ul>
+</div>
+</nav>
+
+<div class="content" data-ice="content"><h1 data-ice="title">src/index.js</h1>
+<pre class="source-code line-number raw-source-code"><code class="prettyprint linenums" data-ice="content">import arrify from &apos;arrify&apos;
+import common from &apos;common-prefix&apos;
+import merge from &apos;webpack-merge&apos;
+import path from &apos;path&apos;
+import {sync as globby} from &apos;globby&apos;
+import webpack from &apos;webpack&apos;
+
+// http://stackoverflow.com/questions/3115150
+function _reEscape(text) {
+	return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, &apos;\\$&amp;&apos;)
+}
+
+// remove the file extension from the file path:
+function _noext(f) {
+	const ext = path.extname(f)
+	return f.slice(0, -ext.length)
+}
+
+/**
+ * The configuration builder class
+ * @public
+ */
+class ConfigurationBuilder {
+	/**
+	 * Define aliases
+	 * @see https://webpack.js.org/configuration/resolve/#resolve-alias
+	 * @param {object} aliases The alias specifications
+	 * @return {ConfigurationBuilder}
+	 * @example
+	 * // webpack.config.js
+	 * module.exports = builder()
+	 *   .alias({
+	 *     &apos;react&apos;: &apos;inferno-compat&apos;,
+	 *     &apos;react-dom&apos;: &apos;inferno-compat&apos;,
+	 *   })
+	 *   .build()
+	 */
+	alias(aliases) {
+		return this.merge({
+			resolve: {
+				alias: aliases,
+			},
+		})
+	}
+
+	/**
+	 * Returns a plain JavaScript object representing the built Webpack configuration
+	 * @return {object}
+	 * @example
+	 * // webpack.config.js
+	 * module.exports = builder()
+	 *   .build()
+	 */
+	build() {
+		return Object.assign({}, ...Object.getOwnPropertyNames(this).map(prop =&gt; ({[prop]: this[prop]})))
+	}
+
+	/**
+	 * Set the output directory
+	 * @param {string} dir The output directory; this path may be relative or absolute
+	 * @param {boolean} chunkhash=true Whether to include [chunkhash] in the filename
+	 * @return {ConfigurationBuilder}
+	 * @example
+	 * // webpack.config.js
+	 * module.exports = builder()
+	 *   .dest(&apos;build/public/js&apos;, false)
+	 *   .build()
+	 */
+	dest(dir, chunkhash = true) {
+		let ManifestPlugin = false
+		try {
+			ManifestPlugin = require(&apos;webpack-manifest-plugin&apos;)
+		} catch (e) {} // eslint-disable-line no-empty
+		chunkhash = chunkhash &amp;&amp; Boolean(ManifestPlugin)
+		if (chunkhash &amp;&amp; ManifestPlugin)
+			return this.plugins(new ManifestPlugin())
+		return this.merge({
+			output: {
+				path: path.resolve(dir),
+				filename: `${chunkhash ? &apos;[chunkhash].&apos; : &apos;&apos;}[name].js`,
+			},
+		})
+	}
+
+	/**
+	 * Specify whether or not to generate development configuration
+	 * @param {boolean} enable Whether or not to enable development mode
+	 * @return {ConfigurationBuilder}
+	 * @example
+	 * // webpack.config.js
+	 * module.exports = builder()
+	 *   .development((process.env.NODE_ENV || &apos;development&apos;) == &apos;development&apos;)
+	 *   .build()
+	 */
+	development(enable) {
+		if (!enable) return this
+		return this.merge({
+			devtool: &apos;source-map&apos;,
+			output: {
+				pathinfo: true,
+			},
+		})
+	}
+
+	/**
+	 * Add resolvable extensions (ex: &apos;.jsx&apos;, &apos;.css&apos;)
+	 * @see https://webpack.js.org/configuration/resolve/#resolve-extensions
+	 * @param {...string} ext The extensions to add
+	 * @return {ConfigurationBuilder}
+	 * @example
+	 * // webpack.config.js
+	 * module.exports = builder()
+	 *   .extensions(&apos;.js&apos;, &apos;.jsx&apos;, &apos;.ts&apos;, &apos;.css&apos;, &apos;.less&apos;, &apos;.scss&apos;)
+	 *   .build()
+	 */
+	extensions(...ext) {
+		return this.merge({
+			resolve: {extensions: ext},
+		})
+	}
+
+	/**
+	 * Add a loader
+	 * @see https://webpack.js.org/configuration/module/#module-rules
+	 * @param {string|Array&lt;string&gt;} ext The file extensions to match
+	 * @param {string|Array&lt;string&gt;} loader The loader spec
+	 * @param {?object} query The loader parameters
+	 * @return {ConfigurationBuilder}
+	 * @example
+	 * // webpack.config.js
+	 * module.exports = builder()
+	 *   .loader([&apos;.js&apos;, &apos;.jsx&apos;], &apos;babel-loader&apos;, {
+	 *     presets: [&apos;latest&apos;, &apos;react&apos;],
+	 *   })
+	 *   .build()
+	 */
+	loader(ext, loader, query) {
+		return this.merge({
+			module: {
+				rules: [Object.assign({
+					test: new RegExp(`(${arrify(ext).map(type =&gt; _reEscape(type)).join(&apos;|&apos;)})$`),
+					loader,
+				}, query ? {query} : null)],
+			},
+		})
+	}
+
+	/**
+	 * Merge configuration using `webpack-merge`
+	 * @see https://github.com/survivejs/webpack-merge
+	 * @param {...object} cfgs The configurations to merge
+	 * @return {ConfigurationBuilder}
+	 * @example
+	 * // webpack.config.js
+	 * module.exports = builder()
+	 *   .merge({
+	 *     resolve: {
+	 *       modules: [&apos;node_modules&apos;],
+	 *     },
+	 *   })
+	 *   .build()
+	 */
+	merge(...cfgs) {
+		const simplified = this.build()
+		return Object.assign(this, merge(simplified, ...cfgs))
+	}
+
+	/**
+	 * Add plugins
+	 * @param {...object} plugins The plugins to add
+	 * @return {ConfigurationBuilder}
+	 * @example
+	 * // webpack.config.js
+	 * module.exports = builder()
+	 *   .plugins(new Plugin1(), new Plugin2())
+	 *   .build()
+	 */
+	plugins(...plugins) {
+		return this.merge({plugins})
+	}
+
+	/**
+	 * Specify whether or not to generate production configuration
+	 * @param {boolean} enable Whether or not to enable production mode
+	 * @return {ConfigurationBuilder}
+	 * @example
+	 * // webpack.config.js
+	 * module.exports = builder()
+	 *   .production(process.env.NODE_ENV == &apos;production&apos;)
+	 *   .build()
+	 */
+	production(enable) {
+		if (!enable) return this
+		return this.plugins(new webpack.optimize.UglifyJsPlugin({
+			comments: false,
+			compress: {warnings: false},
+			minimize: true,
+		}), new webpack.DefinePlugin({
+			&apos;process.env.NODE_ENV&apos;: JSON.stringify(&apos;production&apos;),
+		}))
+	}
+
+	/**
+	 * Set entry/entries based on glob(s)
+	 * @param {...string} globs The file globs
+	 * @return {ConfigurationBuilder}
+	 * @example
+	 * // webpack.config.js
+	 * module.exports = builder()
+	 *   .src(&apos;src/*.js&apos;)
+	 *   .build()
+	 */
+	src(...globs) {
+		const files = globby(globs, {absolute: true, cwd: process.cwd()})
+		const base = files.length == 1 ? path.dirname(files[0]) : common(files)
+		return this.merge({
+			entry: Object.assign({}, ...files.map(file =&gt; ({[_noext(path.relative(base, file))]: file}))),
+		})
+	}
+
+	/**
+	 * Specify vendor modules
+	 * @param {...string} modules The vendor modules
+	 * @return {ConfigurationBuilder}
+	 * @example
+	 * // webpack.config.js
+	 * module.exports = builder()
+	 *   .vendor(&apos;react&apos;, &apos;react-dom&apos;, ...)
+	 *   .build()
+	 */
+	vendor(...modules) {
+		return this.plugins(new webpack.optimize.CommonsChunkPlugin({names: [&apos;vendor&apos;, &apos;manifest&apos;]}))
+			.merge({
+				entry: {
+					vendor: modules,
+				},
+			})
+	}
+}
+
+/**
+ * Creates a configuration builder and returns it
+ * @return {ConfigurationBuilder}
+ */
+export default function builder() {
+	return new ConfigurationBuilder()
+}
+</code></pre>
+
+</div>
+
+<footer class="footer">
+  Generated by <a href="https://esdoc.org">ESDoc<span data-ice="esdocVersion">(0.5.2)</span><img src="./image/esdoc-logo-mini-black.png"></a>
+</footer>
+
+<script src="script/search_index.js"></script>
+<script src="script/search.js"></script>
+<script src="script/pretty-print.js"></script>
+<script src="script/inherited-summary.js"></script>
+<script src="script/test-summary.js"></script>
+<script src="script/inner-link.js"></script>
+<script src="script/patch-for-local.js"></script>
+</body>
+</html>
