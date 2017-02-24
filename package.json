@@ -1,0 +1,28 @@
+{
+  "name": "webpack-configify",
+  "version": "0.0.1",
+  "main": "lib/index.js",
+  "repository": {},
+  "license": "MIT",
+  "scripts": {
+    "build": "babel -d lib/ src/",
+    "buildw": "babel -w -d lib/ src/"
+  },
+  "devDependencies": {
+    "babel-cli": "^6.23.0",
+    "babel-eslint": "^7.1.1",
+    "babel-preset-env": "^1.1.8",
+    "esdoc": "^0.5.2",
+    "eslint": "^3.16.1"
+  },
+  "dependencies": {
+    "arrify": "^1.0.1",
+    "common-prefix": "^1.1.0",
+    "globby": "^6.1.0",
+    "webpack-merge": "^3.0.0"
+  },
+  "peerDependencies": {
+    "webpack": "^2.2.1",
+    "webpack-manifest-plugin": "^1.1.0"
+  }
+}
