@@ -20,7 +20,7 @@ const {isDevelopment, isProduction} = require('asenv')
 module.exports = builder()
 	.development(isDevelopment())
 	.production(isProduction())
-	.glob('src/*.js')
+	.src('src/*.js')
 	.dest('build/')
 	.loader(['.js', '.jsx'], 'babel-loader', {
 		presets: ['latest', 'react'],
@@ -29,7 +29,7 @@ module.exports = builder()
 	.build()
 ```
 
-For further options/methods you can call, [view the documentation](https://jrop.github.io/webpack-configify/).
+For further options/methods you can [view the documentation](https://jrop.github.io/webpack-configify/).
 
 ## License
 
