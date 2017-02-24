@@ -53,7 +53,7 @@ const {isDevelopment, isProduction} = require(&apos;asenv&apos;)
 module.exports = builder()
     .development(isDevelopment())
     .production(isProduction())
-    .glob(&apos;src/*.js&apos;)
+    .src(&apos;src/*.js&apos;)
     .dest(&apos;build/&apos;)
     .loader([&apos;.js&apos;, &apos;.jsx&apos;], &apos;babel-loader&apos;, {
         presets: [&apos;latest&apos;, &apos;react&apos;],
@@ -61,7 +61,7 @@ module.exports = builder()
     .merge({/* ...your custom webpack configuration here... (uses webpack-merge) */})
     .build()</code>
 </code></pre>
-<p>For further options/methods you can call, <a href="https://jrop.github.io/webpack-configify/">view the documentation</a>.</p>
+<p>For further options/methods you can <a href="https://jrop.github.io/webpack-configify/">view the documentation</a>.</p>
 <h2 id="license">License</h2>
 <p>ISC License (ISC)
 Copyright 2017 Jonathan Apodaca <a href="mailto:jrapodaca@gmail.com">jrapodaca@gmail.com</a></p>
