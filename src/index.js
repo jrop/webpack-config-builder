@@ -73,7 +73,7 @@ class ConfigurationBuilder {
 		} catch (e) {} // eslint-disable-line no-empty
 		chunkhash = chunkhash && Boolean(ManifestPlugin)
 		if (chunkhash && ManifestPlugin)
-			return this.plugins(new ManifestPlugin())
+			this.plugins(new ManifestPlugin())
 		return this.merge({
 			output: {
 				path: path.resolve(dir),
@@ -140,6 +140,7 @@ class ConfigurationBuilder {
 				rules: [Object.assign({
 					test: new RegExp(`(${arrify(ext).map(type => _reEscape(type)).join('|')})$`),
 					loader,
+					exclude: /\/node_modules/,
 				}, query ? {query} : null)],
 			},
 		})

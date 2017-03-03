@@ -3,5 +3,6 @@
 		"targets": {
 			"node": 4
 		}
-	}]]
+	}]],
+	"sourceMaps": "inline"
 }
