@@ -21,6 +21,10 @@ function _noext(f) {
  * @public
  */
 class ConfigurationBuilder {
+	constructor() {
+		this._cfg = {}
+	}
+
 	/**
 	 * Define aliases
 	 * @see https://webpack.js.org/configuration/resolve/#resolve-alias
@@ -52,7 +56,7 @@ class ConfigurationBuilder {
 	 *   .build()
 	 */
 	build() {
-		return Object.assign({}, ...Object.getOwnPropertyNames(this).map(prop => ({[prop]: this[prop]})))
+		return this._cfg
 	}
 
 	/**
@@ -162,8 +166,8 @@ class ConfigurationBuilder {
 	 *   .build()
 	 */
 	merge(...cfgs) {
-		const simplified = this.build()
-		return Object.assign(this, merge(simplified, ...cfgs))
+		Object.assign(this._cfg, merge(this._cfg, ...cfgs))
+		return this
 	}
 
 	/**
