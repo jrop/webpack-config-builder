@@ -216,7 +216,8 @@ class ConfigurationBuilder {
 	 *   .build()
 	 */
 	src(...globs) {
-		const files = globby(globs, {absolute: true, cwd: process.cwd()})
+		const cwd = process.cwd()
+		const files = globby(globs, {cwd}).map(f => path.resolve(cwd, f))
 		const base = files.length == 1 ? path.dirname(files[0]) : common(files)
 		return this.merge({
 			entry: Object.assign({}, ...files.map(file => ({[_noext(path.relative(base, file))]: file}))),
