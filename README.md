@@ -1,5 +1,7 @@
 # webpack-configify
 
+[![Greenkeeper badge](https://badges.greenkeeper.io/jrop/webpack-configify.svg)](https://greenkeeper.io/)
+
 A (slightly opinionated) utility to make Webpack configuration less unwieldy.
 
 ## Installation
