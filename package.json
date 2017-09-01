@@ -12,14 +12,14 @@
     "babel-cli": "^6.23.0",
     "babel-eslint": "^7.1.1",
     "babel-preset-env": "^1.1.8",
-    "esdoc": "^0.5.2",
-    "eslint": "^3.16.1"
+    "esdoc": "^1.0.1",
+    "eslint": "^4.5.0"
   },
   "dependencies": {
     "arrify": "^1.0.1",
     "common-prefix": "^1.1.0",
     "globby": "^6.1.0",
-    "webpack-merge": "^3.0.0"
+    "webpack-merge": "^4.1.0"
   },
   "peerDependencies": {
     "webpack": "^2.2.1",
