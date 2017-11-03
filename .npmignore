@@ -1,8 +1,0 @@
-gh-pages/
-src/
-test/
-.editorconfig
-.esdoc.json
-.eslintrc.yml
-.gitignore
-.npmignore

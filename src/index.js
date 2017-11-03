@@ -1,5 +1,5 @@
 import arrify from 'arrify'
-import common from 'common-prefix'
+import common from 'common-dir'
 import merge from 'webpack-merge'
 import path from 'path'
 import {sync as globby} from 'globby'
@@ -76,8 +76,7 @@ class ConfigurationBuilder {
 			ManifestPlugin = require('webpack-manifest-plugin')
 		} catch (e) {} // eslint-disable-line no-empty
 		chunkhash = chunkhash && Boolean(ManifestPlugin)
-		if (chunkhash && ManifestPlugin)
-			this.plugins(new ManifestPlugin())
+		if (chunkhash && ManifestPlugin) this.plugins(new ManifestPlugin())
 		return this.merge({
 			output: {
 				path: path.resolve(dir),
@@ -141,11 +140,20 @@ class ConfigurationBuilder {
 	loader(ext, loader, query) {
 		return this.merge({
 			module: {
-				rules: [Object.assign({
-					test: new RegExp(`(${arrify(ext).map(type => _reEscape(type)).join('|')})$`),
-					loader,
-					exclude: /\/node_modules/,
-				}, query ? {query} : null)],
+				rules: [
+					Object.assign(
+						{
+							test: new RegExp(
+								`(${arrify(ext)
+									.map(type => _reEscape(type))
+									.join('|')})$`
+							),
+							loader,
+							exclude: /\/node_modules/,
+						},
+						query ? {query} : null
+					),
+				],
 			},
 		})
 	}
@@ -196,13 +204,16 @@ class ConfigurationBuilder {
 	 */
 	production(enable) {
 		if (!enable) return this
-		return this.plugins(new webpack.optimize.UglifyJsPlugin({
-			comments: false,
-			compress: {warnings: false},
-			minimize: true,
-		}), new webpack.DefinePlugin({
-			'process.env.NODE_ENV': JSON.stringify('production'),
-		}))
+		return this.plugins(
+			new webpack.optimize.UglifyJsPlugin({
+				comments: false,
+				compress: {warnings: false},
+				minimize: true,
+			}),
+			new webpack.DefinePlugin({
+				'process.env.NODE_ENV': JSON.stringify('production'),
+			})
+		)
 	}
 
 	/**
@@ -220,7 +231,10 @@ class ConfigurationBuilder {
 		const files = globby(globs, {cwd}).map(f => path.resolve(cwd, f))
 		const base = files.length == 1 ? path.dirname(files[0]) : common(files)
 		return this.merge({
-			entry: Object.assign({}, ...files.map(file => ({[_noext(path.relative(base, file))]: file}))),
+			entry: Object.assign(
+				{},
+				...files.map(file => ({[_noext(path.relative(base, file))]: file}))
+			),
 		})
 	}
 
@@ -235,12 +249,13 @@ class ConfigurationBuilder {
 	 *   .build()
 	 */
 	vendor(...modules) {
-		return this.plugins(new webpack.optimize.CommonsChunkPlugin({names: ['vendor', 'manifest']}))
-			.merge({
-				entry: {
-					vendor: modules,
-				},
-			})
+		return this.plugins(
+			new webpack.optimize.CommonsChunkPlugin({names: ['vendor', 'manifest']})
+		).merge({
+			entry: {
+				vendor: modules,
+			},
+		})
 	}
 }
 
