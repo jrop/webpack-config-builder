@@ -133,13 +133,15 @@ class ConfigurationBuilder {
 					after(app) {
 						if (typeof proxyOptions == 'undefined') return
 						const proxy = require('http-proxy').createProxyServer(proxyOptions)
-						app.use((req, res) => {
+						app.use((req, res, next) => {
 							console.error(
 								'webpack-dev-middleware: proxy:',
 								req.method,
 								req.url
 							)
-							proxy.web(req, res)
+							proxy.web(req, res, {}, err => {
+								if (err) return next(err)
+							})
 						})
 					},
 				},
