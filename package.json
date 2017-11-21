@@ -1,28 +1,40 @@
 {
   "name": "webpack-configify",
-  "version": "0.0.2",
+  "version": "0.1.1",
   "main": "lib/index.js",
   "repository": {},
   "license": "MIT",
   "scripts": {
     "build": "babel -d lib/ src/",
-    "buildw": "babel -w -d lib/ src/"
+    "build:watch": "babel -w -d lib/ src/",
+    "lint": "prettier -l {src,test}/**/*.js",
+    "lint:fix": "prettier --write {src,test}/**/*.js",
+    "precommit": "npm run build && npm test && npm run lint",
+    "prepare": "npm run build && npm test",
+    "test": "tape -r babel-register test/**/*.js"
   },
   "devDependencies": {
     "babel-cli": "^6.23.0",
     "babel-eslint": "^7.1.1",
     "babel-preset-env": "^1.1.8",
+    "babel-register": "^6.26.0",
     "esdoc": "^0.5.2",
-    "eslint": "^3.16.1"
+    "husky": "^0.14.3",
+    "prettier": "^1.7.4",
+    "tape": "^4.8.0",
+    "webpack": "^3.8.1"
   },
   "dependencies": {
     "arrify": "^1.0.1",
-    "common-prefix": "^1.1.0",
+    "common-dir": "^1.0.1",
     "globby": "^6.1.0",
     "webpack-merge": "^3.0.0"
   },
   "peerDependencies": {
     "webpack": "^2.2.1",
     "webpack-manifest-plugin": "^1.1.0"
-  }
+  },
+  "files": [
+    "lib/**/*.js"
+  ]
 }

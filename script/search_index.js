@@ -360,9 +360,21 @@ window.esdocSearchIndex = [
     "method"
   ],
   [
+    "src/index.js~configurationbuilder#constructor",
+    "class/src/index.js~ConfigurationBuilder.html#instance-constructor-constructor",
+    "src/index.js~ConfigurationBuilder#constructor",
+    "method"
+  ],
+  [
     "src/index.js~configurationbuilder#dest",
     "class/src/index.js~ConfigurationBuilder.html#instance-method-dest",
     "src/index.js~ConfigurationBuilder#dest",
+    "method"
+  ],
+  [
+    "src/index.js~configurationbuilder#devserver",
+    "class/src/index.js~ConfigurationBuilder.html#instance-method-devServer",
+    "src/index.js~ConfigurationBuilder#devServer",
     "method"
   ],
   [
