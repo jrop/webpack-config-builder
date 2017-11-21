@@ -168,6 +168,43 @@ class ConfigurationBuilder {
 	}
 
 	/**
+	 * Exclude certain modules/files from the bundle
+	 * @param {string|string[]} depsOrFiles The array of files/module to exclude
+	 * @param {string} moduleType see: https://webpack.js.org/configuration/externals/#externals
+	 * @example
+	 * module.exports = builder()
+	 *   .externals(Object.keys(require('./package').dependencies))
+	 *   .build()
+	 *
+	 * // Exclude specific file:
+	 *
+	 * module.exports = builder()
+	 *   // Note how we are using 'config/index' and not 'config/index.js'
+	 *   // Be sure to match exactly how you are requiring/importing the file
+	 *   // For example, if you require the file with `require('./config/index')`
+	 *   // then exclude 'config/index' (without extension).  However if your code
+	 *   // looks like `require('./config/index.js')`, then exclude 'config/index.js'
+	 *   .externals(path.resolve('config/index'))
+	 *   .build()
+	 */
+	externals(depsOrFiles, moduleType = 'commonjs') {
+		depsOrFiles = arrify(depsOrFiles)
+		return this.merge({
+			externals(ctx, req, done) {
+				let mod = req
+				if (mod.startsWith('@')) mod = mod.split('/')[1]
+				if (/^(?:\.\.?|\/)/.test(mod)) {
+					// file
+					mod = path.resolve(ctx, mod)
+				} else mod = /^(?:.*!)?((?:@[^\/]+\/)?[^\/]+)/.exec(req)[1]
+
+				if (depsOrFiles.includes(mod)) return done(null, `${moduleType} ${req}`)
+				else return done()
+			},
+		})
+	}
+
+	/**
 	 * Add a loader
 	 * @see https://webpack.js.org/configuration/module/#module-rules
 	 * @param {string|Array<string>} ext The file extensions to match
