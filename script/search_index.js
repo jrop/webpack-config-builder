@@ -390,6 +390,12 @@ window.esdocSearchIndex = [
     "method"
   ],
   [
+    "src/index.js~configurationbuilder#externals",
+    "class/src/index.js~ConfigurationBuilder.html#instance-method-externals",
+    "src/index.js~ConfigurationBuilder#externals",
+    "method"
+  ],
+  [
     "src/index.js~configurationbuilder#loader",
     "class/src/index.js~ConfigurationBuilder.html#instance-method-loader",
     "src/index.js~ConfigurationBuilder#loader",

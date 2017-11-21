@@ -3,7 +3,7 @@
     "__docId__": 0,
     "kind": "file",
     "name": "src/index.js",
-    "content": "import arrify from 'arrify'\nimport common from 'common-dir'\nimport merge from 'webpack-merge'\nimport path from 'path'\nimport {sync as globby} from 'globby'\nimport webpack from 'webpack'\n\n// http://stackoverflow.com/questions/3115150\nfunction _reEscape(text) {\n\treturn text.replace(/[-[\\]{}()*+?.,\\\\^$|#\\s]/g, '\\\\$&')\n}\n\n// remove the file extension from the file path:\nfunction _noext(f) {\n\tconst ext = path.extname(f)\n\treturn f.slice(0, -ext.length)\n}\n\n/**\n * The configuration builder class\n * @public\n */\nclass ConfigurationBuilder {\n\tconstructor() {\n\t\tthis._cfg = {}\n\t}\n\n\t/**\n\t * Define aliases\n\t * @see https://webpack.js.org/configuration/resolve/#resolve-alias\n\t * @param {object} aliases The alias specifications\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .alias({\n\t *     'react': 'inferno-compat',\n\t *     'react-dom': 'inferno-compat',\n\t *   })\n\t *   .build()\n\t */\n\talias(aliases) {\n\t\treturn this.merge({\n\t\t\tresolve: {\n\t\t\t\talias: aliases,\n\t\t\t},\n\t\t})\n\t}\n\n\t/**\n\t * Returns a plain JavaScript object representing the built Webpack configuration\n\t * @return {object}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .build()\n\t */\n\tbuild() {\n\t\treturn this._cfg\n\t}\n\n\t/**\n\t * Set the output directory\n\t * @param {string} dir The output directory; this path may be relative or absolute\n\t * @param {boolean} chunkhash=true Whether to include [chunkhash] in the filename\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .dest('build/public/js', false)\n\t *   .build()\n\t */\n\tdest(dir, chunkhash = true) {\n\t\tlet ManifestPlugin = false\n\t\ttry {\n\t\t\tManifestPlugin = require('webpack-manifest-plugin')\n\t\t} catch (e) {} // eslint-disable-line no-empty\n\t\tchunkhash = chunkhash && Boolean(ManifestPlugin)\n\t\tif (chunkhash && ManifestPlugin) this.plugins(new ManifestPlugin())\n\t\treturn this.merge({\n\t\t\toutput: {\n\t\t\t\tpath: path.resolve(dir),\n\t\t\t\tfilename: `${chunkhash ? '[chunkhash].' : ''}[name].js`,\n\t\t\t},\n\t\t})\n\t}\n\n\t/**\n\t * Specify whether or not to generate development configuration\n\t * @param {boolean} enable Whether or not to enable development mode\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .development((process.env.NODE_ENV || 'development') == 'development')\n\t *   .build()\n\t */\n\tdevelopment(enable) {\n\t\tif (!enable) return this\n\t\treturn this.merge({\n\t\t\tdevtool: 'source-map',\n\t\t\toutput: {\n\t\t\t\tpathinfo: true,\n\t\t\t},\n\t\t})\n\t}\n\n\t/**\n\t * Turns on overlay and optional proxy\n\t * @param {Object} opts (plus optional 'proxy' options to be passed to 'http-proxy')\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .devServer({\n\t *     publicPath: '/js/',\n\t *     proxy: {\n\t *       target: 'https://localhost:8443/',\n\t *       secure: false,\n\t *     },\n\t *   })\n\t *   .build()\n\t */\n\tdevServer(opts) {\n\t\topts = opts || {}\n\t\tconst {proxy: proxyOptions} = opts\n\t\tdelete opts.proxy\n\t\treturn this.merge({\n\t\t\tdevServer: Object.assign(\n\t\t\t\t{},\n\t\t\t\t{\n\t\t\t\t\toverlay: true,\n\t\t\t\t\tafter(app) {\n\t\t\t\t\t\tif (typeof proxyOptions == 'undefined') return\n\t\t\t\t\t\tconst proxy = require('http-proxy').createProxyServer(proxyOptions)\n\t\t\t\t\t\tapp.use((req, res, next) => {\n\t\t\t\t\t\t\tconsole.error(\n\t\t\t\t\t\t\t\t'webpack-dev-middleware: proxy:',\n\t\t\t\t\t\t\t\treq.method,\n\t\t\t\t\t\t\t\treq.url\n\t\t\t\t\t\t\t)\n\t\t\t\t\t\t\tproxy.web(req, res, {}, err => {\n\t\t\t\t\t\t\t\tif (err) return next(err)\n\t\t\t\t\t\t\t})\n\t\t\t\t\t\t})\n\t\t\t\t\t},\n\t\t\t\t},\n\t\t\t\topts\n\t\t\t),\n\t\t})\n\t}\n\n\t/**\n\t * Add resolvable extensions (ex: '.jsx', '.css')\n\t * @see https://webpack.js.org/configuration/resolve/#resolve-extensions\n\t * @param {...string} ext The extensions to add\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .extensions('.js', '.jsx', '.ts', '.css', '.less', '.scss')\n\t *   .build()\n\t */\n\textensions(...ext) {\n\t\treturn this.merge({\n\t\t\tresolve: {extensions: ext},\n\t\t})\n\t}\n\n\t/**\n\t * Add a loader\n\t * @see https://webpack.js.org/configuration/module/#module-rules\n\t * @param {string|Array<string>} ext The file extensions to match\n\t * @param {string|Array<string>} loader The loader spec\n\t * @param {?object} query The loader parameters\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .loader(['.js', '.jsx'], 'babel-loader', {\n\t *     presets: ['latest', 'react'],\n\t *   })\n\t *   .build()\n\t */\n\tloader(ext, loader, query) {\n\t\treturn this.merge({\n\t\t\tmodule: {\n\t\t\t\trules: [\n\t\t\t\t\tObject.assign(\n\t\t\t\t\t\t{\n\t\t\t\t\t\t\ttest: new RegExp(\n\t\t\t\t\t\t\t\t`(${arrify(ext)\n\t\t\t\t\t\t\t\t\t.map(type => _reEscape(type))\n\t\t\t\t\t\t\t\t\t.join('|')})$`\n\t\t\t\t\t\t\t),\n\t\t\t\t\t\t\tloader,\n\t\t\t\t\t\t\texclude: /\\/node_modules/,\n\t\t\t\t\t\t},\n\t\t\t\t\t\tquery ? {query} : null\n\t\t\t\t\t),\n\t\t\t\t],\n\t\t\t},\n\t\t})\n\t}\n\n\t/**\n\t * Merge configuration using `webpack-merge`\n\t * @see https://github.com/survivejs/webpack-merge\n\t * @param {...object} cfgs The configurations to merge\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .merge({\n\t *     resolve: {\n\t *       modules: ['node_modules'],\n\t *     },\n\t *   })\n\t *   .build()\n\t */\n\tmerge(...cfgs) {\n\t\tObject.assign(this._cfg, merge(this._cfg, ...cfgs))\n\t\treturn this\n\t}\n\n\t/**\n\t * Add plugins\n\t * @param {...object} plugins The plugins to add\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .plugins(new Plugin1(), new Plugin2())\n\t *   .build()\n\t */\n\tplugins(...plugins) {\n\t\treturn this.merge({plugins})\n\t}\n\n\t/**\n\t * Specify whether or not to generate production configuration\n\t * @param {boolean} enable Whether or not to enable production mode\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .production(process.env.NODE_ENV == 'production')\n\t *   .build()\n\t */\n\tproduction(enable) {\n\t\tif (!enable) return this\n\t\treturn this.plugins(\n\t\t\tnew webpack.optimize.UglifyJsPlugin({\n\t\t\t\tcomments: false,\n\t\t\t\tcompress: {warnings: false},\n\t\t\t\tminimize: true,\n\t\t\t}),\n\t\t\tnew webpack.DefinePlugin({\n\t\t\t\t'process.env.NODE_ENV': JSON.stringify('production'),\n\t\t\t})\n\t\t)\n\t}\n\n\t/**\n\t * Set entry/entries based on glob(s)\n\t * @param {...string} globs The file globs\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .src('src/*.js')\n\t *   .build()\n\t */\n\tsrc(...globs) {\n\t\tconst cwd = process.cwd()\n\t\tconst files = globby(globs, {cwd}).map(f => path.resolve(cwd, f))\n\t\tconst base = files.length == 1 ? path.dirname(files[0]) : common(files)\n\t\treturn this.merge({\n\t\t\tentry: Object.assign(\n\t\t\t\t{},\n\t\t\t\t...files.map(file => ({[_noext(path.relative(base, file))]: file}))\n\t\t\t),\n\t\t})\n\t}\n\n\t/**\n\t * Specify vendor modules\n\t * @param {...string} modules The vendor modules\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .vendor('react', 'react-dom', ...)\n\t *   .build()\n\t */\n\tvendor(...modules) {\n\t\treturn this.plugins(\n\t\t\tnew webpack.optimize.CommonsChunkPlugin({names: ['vendor', 'manifest']})\n\t\t).merge({\n\t\t\tentry: {\n\t\t\t\tvendor: modules,\n\t\t\t},\n\t\t})\n\t}\n}\n\n/**\n * Creates a configuration builder and returns it\n * @return {ConfigurationBuilder}\n */\nexport default function builder() {\n\treturn new ConfigurationBuilder()\n}\n",
+    "content": "import arrify from 'arrify'\nimport common from 'common-dir'\nimport merge from 'webpack-merge'\nimport path from 'path'\nimport {sync as globby} from 'globby'\nimport webpack from 'webpack'\n\n// http://stackoverflow.com/questions/3115150\nfunction _reEscape(text) {\n\treturn text.replace(/[-[\\]{}()*+?.,\\\\^$|#\\s]/g, '\\\\$&')\n}\n\n// remove the file extension from the file path:\nfunction _noext(f) {\n\tconst ext = path.extname(f)\n\treturn f.slice(0, -ext.length)\n}\n\n/**\n * The configuration builder class\n * @public\n */\nclass ConfigurationBuilder {\n\tconstructor() {\n\t\tthis._cfg = {}\n\t}\n\n\t/**\n\t * Define aliases\n\t * @see https://webpack.js.org/configuration/resolve/#resolve-alias\n\t * @param {object} aliases The alias specifications\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .alias({\n\t *     'react': 'inferno-compat',\n\t *     'react-dom': 'inferno-compat',\n\t *   })\n\t *   .build()\n\t */\n\talias(aliases) {\n\t\treturn this.merge({\n\t\t\tresolve: {\n\t\t\t\talias: aliases,\n\t\t\t},\n\t\t})\n\t}\n\n\t/**\n\t * Returns a plain JavaScript object representing the built Webpack configuration\n\t * @return {object}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .build()\n\t */\n\tbuild() {\n\t\treturn this._cfg\n\t}\n\n\t/**\n\t * Set the output directory\n\t * @param {string} dir The output directory; this path may be relative or absolute\n\t * @param {boolean} chunkhash=true Whether to include [chunkhash] in the filename\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .dest('build/public/js', false)\n\t *   .build()\n\t */\n\tdest(dir, chunkhash = true) {\n\t\tlet ManifestPlugin = false\n\t\ttry {\n\t\t\tManifestPlugin = require('webpack-manifest-plugin')\n\t\t} catch (e) {} // eslint-disable-line no-empty\n\t\tchunkhash = chunkhash && Boolean(ManifestPlugin)\n\t\tif (chunkhash && ManifestPlugin) this.plugins(new ManifestPlugin())\n\t\treturn this.merge({\n\t\t\toutput: {\n\t\t\t\tpath: path.resolve(dir),\n\t\t\t\tfilename: `${chunkhash ? '[chunkhash].' : ''}[name].js`,\n\t\t\t},\n\t\t})\n\t}\n\n\t/**\n\t * Specify whether or not to generate development configuration\n\t * @param {boolean} enable Whether or not to enable development mode\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .development((process.env.NODE_ENV || 'development') == 'development')\n\t *   .build()\n\t */\n\tdevelopment(enable) {\n\t\tif (!enable) return this\n\t\treturn this.merge({\n\t\t\tdevtool: 'source-map',\n\t\t\toutput: {\n\t\t\t\tpathinfo: true,\n\t\t\t},\n\t\t})\n\t}\n\n\t/**\n\t * Turns on overlay and optional proxy\n\t * @param {Object} opts (plus optional 'proxy' options to be passed to 'http-proxy')\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .devServer({\n\t *     publicPath: '/js/',\n\t *     proxy: {\n\t *       target: 'https://localhost:8443/',\n\t *       secure: false,\n\t *     },\n\t *   })\n\t *   .build()\n\t */\n\tdevServer(opts) {\n\t\topts = opts || {}\n\t\tconst {proxy: proxyOptions} = opts\n\t\tdelete opts.proxy\n\t\treturn this.merge({\n\t\t\tdevServer: Object.assign(\n\t\t\t\t{},\n\t\t\t\t{\n\t\t\t\t\toverlay: true,\n\t\t\t\t\tafter(app) {\n\t\t\t\t\t\tif (typeof proxyOptions == 'undefined') return\n\t\t\t\t\t\tconst proxy = require('http-proxy').createProxyServer(proxyOptions)\n\t\t\t\t\t\tapp.use((req, res, next) => {\n\t\t\t\t\t\t\tconsole.error(\n\t\t\t\t\t\t\t\t'webpack-dev-middleware: proxy:',\n\t\t\t\t\t\t\t\treq.method,\n\t\t\t\t\t\t\t\treq.url\n\t\t\t\t\t\t\t)\n\t\t\t\t\t\t\tproxy.web(req, res, {}, err => {\n\t\t\t\t\t\t\t\tif (err) return next(err)\n\t\t\t\t\t\t\t})\n\t\t\t\t\t\t})\n\t\t\t\t\t},\n\t\t\t\t},\n\t\t\t\topts\n\t\t\t),\n\t\t})\n\t}\n\n\t/**\n\t * Add resolvable extensions (ex: '.jsx', '.css')\n\t * @see https://webpack.js.org/configuration/resolve/#resolve-extensions\n\t * @param {...string} ext The extensions to add\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .extensions('.js', '.jsx', '.ts', '.css', '.less', '.scss')\n\t *   .build()\n\t */\n\textensions(...ext) {\n\t\treturn this.merge({\n\t\t\tresolve: {extensions: ext},\n\t\t})\n\t}\n\n\t/**\n\t * Exclude certain modules/files from the bundle\n\t * @param {string|string[]} depsOrFiles The array of files/module to exclude\n\t * @param {string} moduleType see: https://webpack.js.org/configuration/externals/#externals\n\t * @example\n\t * module.exports = builder()\n\t *   .externals(Object.keys(require('./package').dependencies))\n\t *   .build()\n\t *\n\t * // Exclude specific file:\n\t *\n\t * module.exports = builder()\n\t *   // Note how we are using 'config/index' and not 'config/index.js'\n\t *   // Be sure to match exactly how you are requiring/importing the file\n\t *   // For example, if you require the file with `require('./config/index')`\n\t *   // then exclude 'config/index' (without extension).  However if your code\n\t *   // looks like `require('./config/index.js')`, then exclude 'config/index.js'\n\t *   .externals(path.resolve('config/index'))\n\t *   .build()\n\t */\n\texternals(depsOrFiles, moduleType = 'commonjs') {\n\t\tdepsOrFiles = arrify(depsOrFiles)\n\t\treturn this.merge({\n\t\t\texternals(ctx, req, done) {\n\t\t\t\tlet mod = req\n\t\t\t\tif (mod.startsWith('@')) mod = mod.split('/')[1]\n\t\t\t\tif (/^(?:\\.\\.?|\\/)/.test(mod)) {\n\t\t\t\t\t// file\n\t\t\t\t\tmod = path.resolve(ctx, mod)\n\t\t\t\t} else mod = /^(?:.*!)?((?:@[^\\/]+\\/)?[^\\/]+)/.exec(req)[1]\n\n\t\t\t\tif (depsOrFiles.includes(mod)) return done(null, `${moduleType} ${req}`)\n\t\t\t\telse return done()\n\t\t\t},\n\t\t})\n\t}\n\n\t/**\n\t * Add a loader\n\t * @see https://webpack.js.org/configuration/module/#module-rules\n\t * @param {string|Array<string>} ext The file extensions to match\n\t * @param {string|Array<string>} loader The loader spec\n\t * @param {?object} query The loader parameters\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .loader(['.js', '.jsx'], 'babel-loader', {\n\t *     presets: ['latest', 'react'],\n\t *   })\n\t *   .build()\n\t */\n\tloader(ext, loader, query) {\n\t\treturn this.merge({\n\t\t\tmodule: {\n\t\t\t\trules: [\n\t\t\t\t\tObject.assign(\n\t\t\t\t\t\t{\n\t\t\t\t\t\t\ttest: new RegExp(\n\t\t\t\t\t\t\t\t`(${arrify(ext)\n\t\t\t\t\t\t\t\t\t.map(type => _reEscape(type))\n\t\t\t\t\t\t\t\t\t.join('|')})$`\n\t\t\t\t\t\t\t),\n\t\t\t\t\t\t\tloader,\n\t\t\t\t\t\t\texclude: /\\/node_modules/,\n\t\t\t\t\t\t},\n\t\t\t\t\t\tquery ? {query} : null\n\t\t\t\t\t),\n\t\t\t\t],\n\t\t\t},\n\t\t})\n\t}\n\n\t/**\n\t * Merge configuration using `webpack-merge`\n\t * @see https://github.com/survivejs/webpack-merge\n\t * @param {...object} cfgs The configurations to merge\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .merge({\n\t *     resolve: {\n\t *       modules: ['node_modules'],\n\t *     },\n\t *   })\n\t *   .build()\n\t */\n\tmerge(...cfgs) {\n\t\tObject.assign(this._cfg, merge(this._cfg, ...cfgs))\n\t\treturn this\n\t}\n\n\t/**\n\t * Add plugins\n\t * @param {...object} plugins The plugins to add\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .plugins(new Plugin1(), new Plugin2())\n\t *   .build()\n\t */\n\tplugins(...plugins) {\n\t\treturn this.merge({plugins})\n\t}\n\n\t/**\n\t * Specify whether or not to generate production configuration\n\t * @param {boolean} enable Whether or not to enable production mode\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .production(process.env.NODE_ENV == 'production')\n\t *   .build()\n\t */\n\tproduction(enable) {\n\t\tif (!enable) return this\n\t\treturn this.plugins(\n\t\t\tnew webpack.optimize.UglifyJsPlugin({\n\t\t\t\tcomments: false,\n\t\t\t\tcompress: {warnings: false},\n\t\t\t\tminimize: true,\n\t\t\t}),\n\t\t\tnew webpack.DefinePlugin({\n\t\t\t\t'process.env.NODE_ENV': JSON.stringify('production'),\n\t\t\t})\n\t\t)\n\t}\n\n\t/**\n\t * Set entry/entries based on glob(s)\n\t * @param {...string} globs The file globs\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .src('src/*.js')\n\t *   .build()\n\t */\n\tsrc(...globs) {\n\t\tconst cwd = process.cwd()\n\t\tconst files = globby(globs, {cwd}).map(f => path.resolve(cwd, f))\n\t\tconst base = files.length == 1 ? path.dirname(files[0]) : common(files)\n\t\treturn this.merge({\n\t\t\tentry: Object.assign(\n\t\t\t\t{},\n\t\t\t\t...files.map(file => ({[_noext(path.relative(base, file))]: file}))\n\t\t\t),\n\t\t})\n\t}\n\n\t/**\n\t * Specify vendor modules\n\t * @param {...string} modules The vendor modules\n\t * @return {ConfigurationBuilder}\n\t * @example\n\t * // webpack.config.js\n\t * module.exports = builder()\n\t *   .vendor('react', 'react-dom', ...)\n\t *   .build()\n\t */\n\tvendor(...modules) {\n\t\treturn this.plugins(\n\t\t\tnew webpack.optimize.CommonsChunkPlugin({names: ['vendor', 'manifest']})\n\t\t).merge({\n\t\t\tentry: {\n\t\t\t\tvendor: modules,\n\t\t\t},\n\t\t})\n\t}\n}\n\n/**\n * Creates a configuration builder and returns it\n * @return {ConfigurationBuilder}\n */\nexport default function builder() {\n\treturn new ConfigurationBuilder()\n}\n",
     "static": true,
     "longname": "src/index.js",
     "access": null,
@@ -367,6 +367,50 @@
   {
     "__docId__": 12,
     "kind": "method",
+    "name": "externals",
+    "memberof": "src/index.js~ConfigurationBuilder",
+    "generator": false,
+    "async": false,
+    "static": false,
+    "longname": "src/index.js~ConfigurationBuilder#externals",
+    "access": null,
+    "description": "Exclude certain modules/files from the bundle",
+    "examples": [
+      "module.exports = builder()\n  .externals(Object.keys(require('./package').dependencies))\n  .build()\n\n// Exclude specific file:\n\nmodule.exports = builder()\n  // Note how we are using 'config/index' and not 'config/index.js'\n  // Be sure to match exactly how you are requiring/importing the file\n  // For example, if you require the file with `require('./config/index')`\n  // then exclude 'config/index' (without extension).  However if your code\n  // looks like `require('./config/index.js')`, then exclude 'config/index.js'\n  .externals(path.resolve('config/index'))\n  .build()"
+    ],
+    "lineNumber": 190,
+    "params": [
+      {
+        "nullable": null,
+        "types": [
+          "string",
+          "string[]"
+        ],
+        "spread": false,
+        "optional": false,
+        "name": "depsOrFiles",
+        "description": "The array of files/module to exclude"
+      },
+      {
+        "nullable": null,
+        "types": [
+          "string"
+        ],
+        "spread": false,
+        "optional": false,
+        "name": "moduleType",
+        "description": "see: https://webpack.js.org/configuration/externals/#externals"
+      }
+    ],
+    "return": {
+      "types": [
+        "*"
+      ]
+    }
+  },
+  {
+    "__docId__": 13,
+    "kind": "method",
     "name": "loader",
     "memberof": "src/index.js~ConfigurationBuilder",
     "generator": false,
@@ -381,7 +425,7 @@
     "see": [
       "https://webpack.js.org/configuration/module/#module-rules"
     ],
-    "lineNumber": 185,
+    "lineNumber": 222,
     "params": [
       {
         "nullable": null,
@@ -426,7 +470,7 @@
     }
   },
   {
-    "__docId__": 13,
+    "__docId__": 14,
     "kind": "method",
     "name": "merge",
     "memberof": "src/index.js~ConfigurationBuilder",
@@ -442,7 +486,7 @@
     "see": [
       "https://github.com/survivejs/webpack-merge"
     ],
-    "lineNumber": 221,
+    "lineNumber": 258,
     "params": [
       {
         "nullable": null,
@@ -465,7 +509,7 @@
     }
   },
   {
-    "__docId__": 14,
+    "__docId__": 15,
     "kind": "method",
     "name": "plugins",
     "memberof": "src/index.js~ConfigurationBuilder",
@@ -478,7 +522,7 @@
     "examples": [
       "// webpack.config.js\nmodule.exports = builder()\n  .plugins(new Plugin1(), new Plugin2())\n  .build()"
     ],
-    "lineNumber": 236,
+    "lineNumber": 273,
     "params": [
       {
         "nullable": null,
@@ -501,7 +545,7 @@
     }
   },
   {
-    "__docId__": 15,
+    "__docId__": 16,
     "kind": "method",
     "name": "production",
     "memberof": "src/index.js~ConfigurationBuilder",
@@ -514,7 +558,7 @@
     "examples": [
       "// webpack.config.js\nmodule.exports = builder()\n  .production(process.env.NODE_ENV == 'production')\n  .build()"
     ],
-    "lineNumber": 250,
+    "lineNumber": 287,
     "params": [
       {
         "nullable": null,
@@ -537,7 +581,7 @@
     }
   },
   {
-    "__docId__": 16,
+    "__docId__": 17,
     "kind": "method",
     "name": "src",
     "memberof": "src/index.js~ConfigurationBuilder",
@@ -550,7 +594,7 @@
     "examples": [
       "// webpack.config.js\nmodule.exports = builder()\n  .src('src/*.js')\n  .build()"
     ],
-    "lineNumber": 274,
+    "lineNumber": 311,
     "params": [
       {
         "nullable": null,
@@ -573,7 +617,7 @@
     }
   },
   {
-    "__docId__": 17,
+    "__docId__": 18,
     "kind": "method",
     "name": "vendor",
     "memberof": "src/index.js~ConfigurationBuilder",
@@ -586,7 +630,7 @@
     "examples": [
       "// webpack.config.js\nmodule.exports = builder()\n  .vendor('react', 'react-dom', ...)\n  .build()"
     ],
-    "lineNumber": 296,
+    "lineNumber": 333,
     "params": [
       {
         "nullable": null,
@@ -609,7 +653,7 @@
     }
   },
   {
-    "__docId__": 18,
+    "__docId__": 19,
     "kind": "function",
     "name": "builder",
     "memberof": "src/index.js",
@@ -622,7 +666,7 @@
     "importPath": "webpack-configify/src/index.js",
     "importStyle": "builder",
     "description": "Creates a configuration builder and returns it",
-    "lineNumber": 311,
+    "lineNumber": 348,
     "params": [],
     "return": {
       "nullable": null,
@@ -634,7 +678,7 @@
     }
   },
   {
-    "__docId__": 20,
+    "__docId__": 21,
     "kind": "external",
     "name": "Infinity",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Infinity",
@@ -646,7 +690,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 21,
+    "__docId__": 22,
     "kind": "external",
     "name": "NaN",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/NaN",
@@ -658,7 +702,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 22,
+    "__docId__": 23,
     "kind": "external",
     "name": "undefined",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/undefined",
@@ -670,7 +714,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 23,
+    "__docId__": 24,
     "kind": "external",
     "name": "null",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/null",
@@ -682,7 +726,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 24,
+    "__docId__": 25,
     "kind": "external",
     "name": "Object",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object",
@@ -694,7 +738,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 25,
+    "__docId__": 26,
     "kind": "external",
     "name": "object",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object",
@@ -706,7 +750,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 26,
+    "__docId__": 27,
     "kind": "external",
     "name": "Function",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function",
@@ -718,7 +762,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 27,
+    "__docId__": 28,
     "kind": "external",
     "name": "function",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function",
@@ -730,7 +774,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 28,
+    "__docId__": 29,
     "kind": "external",
     "name": "Boolean",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean",
@@ -742,7 +786,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 29,
+    "__docId__": 30,
     "kind": "external",
     "name": "boolean",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean",
@@ -754,7 +798,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 30,
+    "__docId__": 31,
     "kind": "external",
     "name": "Symbol",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol",
@@ -766,7 +810,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 31,
+    "__docId__": 32,
     "kind": "external",
     "name": "Error",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error",
@@ -778,7 +822,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 32,
+    "__docId__": 33,
     "kind": "external",
     "name": "EvalError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/EvalError",
@@ -790,7 +834,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 33,
+    "__docId__": 34,
     "kind": "external",
     "name": "InternalError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/InternalError",
@@ -802,7 +846,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 34,
+    "__docId__": 35,
     "kind": "external",
     "name": "RangeError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RangeError",
@@ -814,7 +858,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 35,
+    "__docId__": 36,
     "kind": "external",
     "name": "ReferenceError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ReferenceError",
@@ -826,7 +870,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 36,
+    "__docId__": 37,
     "kind": "external",
     "name": "SyntaxError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SyntaxError",
@@ -838,7 +882,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 37,
+    "__docId__": 38,
     "kind": "external",
     "name": "TypeError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypeError",
@@ -850,7 +894,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 38,
+    "__docId__": 39,
     "kind": "external",
     "name": "URIError",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/URIError",
@@ -862,7 +906,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 39,
+    "__docId__": 40,
     "kind": "external",
     "name": "Number",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number",
@@ -874,7 +918,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 40,
+    "__docId__": 41,
     "kind": "external",
     "name": "number",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number",
@@ -886,7 +930,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 41,
+    "__docId__": 42,
     "kind": "external",
     "name": "Date",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date",
@@ -898,7 +942,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 42,
+    "__docId__": 43,
     "kind": "external",
     "name": "String",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String",
@@ -910,7 +954,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 43,
+    "__docId__": 44,
     "kind": "external",
     "name": "string",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String",
@@ -922,7 +966,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 44,
+    "__docId__": 45,
     "kind": "external",
     "name": "RegExp",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp",
@@ -934,7 +978,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 45,
+    "__docId__": 46,
     "kind": "external",
     "name": "Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array",
@@ -946,7 +990,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 46,
+    "__docId__": 47,
     "kind": "external",
     "name": "Int8Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int8Array",
@@ -958,7 +1002,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 47,
+    "__docId__": 48,
     "kind": "external",
     "name": "Uint8Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array",
@@ -970,7 +1014,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 48,
+    "__docId__": 49,
     "kind": "external",
     "name": "Uint8ClampedArray",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8ClampedArray",
@@ -982,7 +1026,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 49,
+    "__docId__": 50,
     "kind": "external",
     "name": "Int16Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int16Array",
@@ -994,7 +1038,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 50,
+    "__docId__": 51,
     "kind": "external",
     "name": "Uint16Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint16Array",
@@ -1006,7 +1050,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 51,
+    "__docId__": 52,
     "kind": "external",
     "name": "Int32Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Int32Array",
@@ -1018,7 +1062,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 52,
+    "__docId__": 53,
     "kind": "external",
     "name": "Uint32Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint32Array",
@@ -1030,7 +1074,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 53,
+    "__docId__": 54,
     "kind": "external",
     "name": "Float32Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Float32Array",
@@ -1042,7 +1086,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 54,
+    "__docId__": 55,
     "kind": "external",
     "name": "Float64Array",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Float64Array",
@@ -1054,7 +1098,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 55,
+    "__docId__": 56,
     "kind": "external",
     "name": "Map",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map",
@@ -1066,7 +1110,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 56,
+    "__docId__": 57,
     "kind": "external",
     "name": "Set",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set",
@@ -1078,7 +1122,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 57,
+    "__docId__": 58,
     "kind": "external",
     "name": "WeakMap",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap",
@@ -1090,7 +1134,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 58,
+    "__docId__": 59,
     "kind": "external",
     "name": "WeakSet",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakSet",
@@ -1102,7 +1146,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 59,
+    "__docId__": 60,
     "kind": "external",
     "name": "ArrayBuffer",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer",
@@ -1114,7 +1158,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 60,
+    "__docId__": 61,
     "kind": "external",
     "name": "DataView",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView",
@@ -1126,7 +1170,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 61,
+    "__docId__": 62,
     "kind": "external",
     "name": "JSON",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON",
@@ -1138,7 +1182,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 62,
+    "__docId__": 63,
     "kind": "external",
     "name": "Promise",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise",
@@ -1150,7 +1194,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 63,
+    "__docId__": 64,
     "kind": "external",
     "name": "Generator",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Generator",
@@ -1162,7 +1206,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 64,
+    "__docId__": 65,
     "kind": "external",
     "name": "GeneratorFunction",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/GeneratorFunction",
@@ -1174,7 +1218,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 65,
+    "__docId__": 66,
     "kind": "external",
     "name": "Reflect",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Reflect",
@@ -1186,7 +1230,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 66,
+    "__docId__": 67,
     "kind": "external",
     "name": "Proxy",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy",
@@ -1199,7 +1243,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 68,
+    "__docId__": 69,
     "kind": "external",
     "name": "CanvasRenderingContext2D",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D",
@@ -1211,7 +1255,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 69,
+    "__docId__": 70,
     "kind": "external",
     "name": "DocumentFragment",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/DocumentFragment",
@@ -1223,7 +1267,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 70,
+    "__docId__": 71,
     "kind": "external",
     "name": "Element",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/Element",
@@ -1235,7 +1279,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 71,
+    "__docId__": 72,
     "kind": "external",
     "name": "Event",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/Event",
@@ -1247,7 +1291,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 72,
+    "__docId__": 73,
     "kind": "external",
     "name": "Node",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/Node",
@@ -1259,7 +1303,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 73,
+    "__docId__": 74,
     "kind": "external",
     "name": "NodeList",
     "externalLink": "https://developer.mozilla.org/en-US/docs/Web/API/NodeList",
@@ -1271,7 +1315,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 74,
+    "__docId__": 75,
     "kind": "external",
     "name": "XMLHttpRequest",
     "externalLink": "https://developer.mozilla.org/en/docs/Web/API/XMLHttpRequest",
@@ -1283,7 +1327,7 @@
     "builtinExternal": true
   },
   {
-    "__docId__": 75,
+    "__docId__": 76,
     "kind": "external",
     "name": "AudioContext",
     "externalLink": "https://developer.mozilla.org/en/docs/Web/API/AudioContext",

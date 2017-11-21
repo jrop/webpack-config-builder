@@ -1,6 +1,6 @@
 {
   "name": "webpack-configify",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "main": "lib/index.js",
   "repository": {},
   "license": "MIT",
@@ -10,7 +10,7 @@
     "lint": "prettier -l {src,test}/**/*.js",
     "lint:fix": "prettier --write {src,test}/**/*.js",
     "precommit": "npm run build && npm test && npm run lint",
-    "prepare": "npm run build && npm test",
+    "prepack": "npm run build && npm test",
     "test": "tape -r babel-register test/**/*.js"
   },
   "devDependencies": {
