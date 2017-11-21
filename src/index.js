@@ -106,6 +106,49 @@ class ConfigurationBuilder {
 	}
 
 	/**
+	 * Turns on overlay and optional proxy
+	 * @param {Object} opts (plus optional 'proxy' options to be passed to 'http-proxy')
+	 * @return {ConfigurationBuilder}
+	 * @example
+	 * // webpack.config.js
+	 * module.exports = builder()
+	 *   .devServer({
+	 *     publicPath: '/js/',
+	 *     proxy: {
+	 *       target: 'https://localhost:8443/',
+	 *       secure: false,
+	 *     },
+	 *   })
+	 *   .build()
+	 */
+	devServer(opts) {
+		opts = opts || {}
+		const {proxy: proxyOptions} = opts
+		delete opts.proxy
+		return this.merge({
+			devServer: Object.assign(
+				{},
+				{
+					overlay: true,
+					after(app) {
+						if (typeof proxyOptions == 'undefined') return
+						const proxy = require('http-proxy').createProxyServer(proxyOptions)
+						app.use((req, res) => {
+							console.error(
+								'webpack-dev-middleware: proxy:',
+								req.method,
+								req.url
+							)
+							proxy.web(req, res)
+						})
+					},
+				},
+				opts
+			),
+		})
+	}
+
+	/**
 	 * Add resolvable extensions (ex: '.jsx', '.css')
 	 * @see https://webpack.js.org/configuration/resolve/#resolve-extensions
 	 * @param {...string} ext The extensions to add

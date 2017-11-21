@@ -20,4 +20,25 @@ test('builder', t => {
 	t.end()
 })
 
+test('devServer', t => {
+	let config = cfg()
+		.devServer({
+			publicPath: '/js/',
+		})
+		.build()
+	t.equal(config.devServer.overlay, true)
+	t.equal(config.devServer.publicPath, '/js/')
+	t.assert(typeof config.devServer.after == 'function')
+	t.doesNotThrow(() => config.devServer.after())
+
+	config = cfg()
+		.devServer({
+			overlay: false,
+		})
+		.build()
+	t.equal(config.devServer.overlay, false)
+	t.doesNotThrow(() => config.devServer.after())
+	t.end()
+})
+
 // TODO: add more tests
