@@ -107,12 +107,15 @@ class ConfigurationBuilder {
 
 	/**
 	 * Turns on overlay and optional proxy
-	 * @param {Object} opts (plus optional 'proxy' options to be passed to 'http-proxy')
+	 * @param {Object} opts devServer options
+	 * @param {Object} opts.interceptRoot if true overrides webpack-dev-server '/' path and proxies instead
+	 * @param {Object} opts.proxy options to be passed to 'http-proxy'
 	 * @return {ConfigurationBuilder}
 	 * @example
 	 * // webpack.config.js
 	 * module.exports = builder()
 	 *   .devServer({
+	 *     interceptRoot: true,
 	 *     publicPath: '/js/',
 	 *     proxy: {
 	 *       target: 'https://localhost:8443/',
@@ -123,26 +126,31 @@ class ConfigurationBuilder {
 	 */
 	devServer(opts) {
 		opts = opts || {}
+
+		const {interceptRoot} = opts
 		const {proxy: proxyOptions} = opts
+		delete opts.interceptRoot
 		delete opts.proxy
+
+		const proxy = require('http-proxy').createProxyServer(proxyOptions)
+		const middleware = (req, res, next) => {
+			console.error('webpack-dev-middleware: proxy:', req.method, req.url)
+			proxy.web(req, res, {}, err => {
+				if (err) return next(err)
+			})
+		}
 		return this.merge({
 			devServer: Object.assign(
 				{},
 				{
 					overlay: true,
+					before(app) {
+						if (!interceptRoot) return
+						app.all('/', middleware)
+					},
 					after(app) {
 						if (typeof proxyOptions == 'undefined') return
-						const proxy = require('http-proxy').createProxyServer(proxyOptions)
-						app.use((req, res, next) => {
-							console.error(
-								'webpack-dev-middleware: proxy:',
-								req.method,
-								req.url
-							)
-							proxy.web(req, res, {}, err => {
-								if (err) return next(err)
-							})
-						})
+						app.use(middleware)
 					},
 				},
 				opts

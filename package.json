@@ -7,6 +7,7 @@
   "scripts": {
     "build": "babel -d lib/ src/",
     "build:watch": "babel -w -d lib/ src/",
+    "doc": "esdoc",
     "lint": "prettier -l {src,test}/**/*.js",
     "lint:fix": "prettier --write {src,test}/**/*.js",
     "precommit": "npm run build && npm test && npm run lint",
@@ -19,6 +20,7 @@
     "babel-preset-env": "^1.1.8",
     "babel-register": "^6.26.0",
     "esdoc": "^0.5.2",
+    "http-proxy": "^1.16.2",
     "husky": "^0.14.3",
     "prettier": "^1.7.4",
     "tape": "^4.8.0",
